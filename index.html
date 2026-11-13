@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsonfmt</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --border: #2a2f3a;
+    --text: #e6e8ee; --muted: #8a92a3; --accent: #5b8cff; --accent-h: #7aa2ff;
+    --ok: #3ecf8e; --err: #ff6b6b;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f6f8; --panel: #ffffff; --panel2: #f0f2f6; --border: #dde1e8;
+      --text: #1b1f27; --muted: #667085; --accent: #3b6cf0; --accent-h: #2c57cc;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+  header { padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--panel);
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .brand { font-weight: 700; font-size: 20px; margin-right: 8px; }
+  .brand span { color: var(--accent); }
+  .btn { cursor: pointer; border: 1px solid var(--border); background: var(--panel2);
+    color: var(--text); padding: 8px 14px; border-radius: 8px; font-size: 14px; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent-h); }
+  select { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px; font-size: 14px; }
+  .chk { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+  main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 24px; min-height: 0; }
+  .pane { display: flex; flex-direction: column; min-height: 0; }
+  .pane h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted);
+    margin: 0 0 6px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+  .pane h2 button { all: unset; cursor: pointer; color: var(--accent); font-size: 12px; text-transform: none; letter-spacing: 0; }
+  textarea { flex: 1; width: 100%; resize: none; background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 12px; tab-size: 2;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; }
+  textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  footer { padding: 10px 24px; border-top: 1px solid var(--border); background: var(--panel);
+    font-size: 13px; min-height: 40px; }
+  footer.ok { color: var(--ok); } footer.err { color: var(--err); }
+  @media (max-width: 720px) { main { grid-template-columns: 1fr; grid-auto-rows: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">json<span>fmt</span></div>
+  <button class="btn primary" id="fmt">Formatar</button>
+  <button class="btn" id="min">Minificar</button>
+  <button class="btn" id="val">Validar</button>
+  <label class="chk">Indentação
+    <select id="indent"><option value="2">2 espaços</option><option value="4">4 espaços</option><option value="tab">Tab</option></select>
+  </label>
+  <label class="chk"><input type="checkbox" id="sort"> Ordenar chaves</label>
+</header>
+
+<main>
+  <div class="pane">
+    <h2>Entrada <button id="clear">Limpar</button></h2>
+    <textarea id="in" spellcheck="false" placeholder='{"nome":"exemplo","itens":[1,2,3]}'></textarea>
+  </div>
+  <div class="pane">
+    <h2>Saída <button id="copy">Copiar</button></h2>
+    <textarea id="out" spellcheck="false" readonly></textarea>
+  </div>
+</main>
+<footer id="st">Tudo roda no seu navegador. Nada é enviado para servidor.</footer>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const inp = $("in"), out = $("out"), st = $("st");
+
+  function setStatus(msg, ok) { st.textContent = msg; st.className = ok ? "ok" : "err"; }
+
+  function sortKeys(v) {
+    if (Array.isArray(v)) return v.map(sortKeys);
+    if (v && typeof v === "object")
+      return Object.keys(v).sort().reduce((o, k) => (o[k] = sortKeys(v[k]), o), {});
+    return v;
+  }
+
+  function parse() {
+    const text = inp.value;
+    if (!text.trim()) { setStatus("Cole um JSON na entrada.", false); return null; }
+    try { return { value: JSON.parse(text) }; }
+    catch (e) {
+      let msg = e.message;
+      const m = msg.match(/position (\d+)/i);
+      if (m) {
+        const pos = +m[1], before = text.slice(0, pos).split("\n");
+        msg += ` — linha ${before.length}, coluna ${before[before.length - 1].length + 1}`;
+        inp.focus(); inp.setSelectionRange(pos, Math.min(pos + 1, text.length));
+      }
+      out.value = "";
+      setStatus("JSON inválido: " + msg, false);
+      return null;
+    }
+  }
+
+  function indentArg() {
+    const v = $("indent").value; return v === "tab" ? "\t" : +v;
+  }
+
+  function run(minify) {
+    const r = parse(); if (!r) return;
+    const v = $("sort").checked ? sortKeys(r.value) : r.value;
+    out.value = JSON.stringify(v, null, minify ? 0 : indentArg());
+    const a = new Blob([inp.value]).size, b = new Blob([out.value]).size;
+    setStatus(`JSON válido · ${a} B → ${b} B`, true);
+  }
+
+  $("fmt").onclick = () => run(false);
+  $("min").onclick = () => run(true);
+  $("val").onclick = () => { const r = parse(); if (r) setStatus("JSON válido.", true); };
+  $("clear").onclick = () => { inp.value = out.value = ""; setStatus("", true); inp.focus(); };
+  $("copy").onclick = async () => {
+    if (!out.value) return;
+    try { await navigator.clipboard.writeText(out.value); } catch { out.select(); document.execCommand("copy"); }
+    setStatus("Copiado.", true);
+  };
+  inp.addEventListener("keydown", e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); run(false); }
+  });
+})();
+</script>
+</body>
+</html>
